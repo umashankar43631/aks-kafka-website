@@ -28,6 +28,7 @@
 - [Getting Started](#-getting-started)
 - [Configuration](#-configuration)
 - [AKS Kafka Deployment](#-aks-kafka-deployment)
+- [Kafka → Databricks Streaming Pipeline](#-kafka--databricks-streaming-pipeline)
 - [API Reference](#-api-reference)
 - [Screenshots](#-screenshots)
 - [Contributing](#-contributing)
@@ -322,6 +323,129 @@ kubectl apply -f kafka-cluster.yaml
 # To stop the cluster
 ./stop-aks.sh
 ```
+
+---
+
+## Kafka → Databricks Streaming Pipeline
+
+This project includes a fully working end-to-end streaming pipeline that takes messages produced through Kafka Studio and streams them into **Azure Databricks** via Spark Structured Streaming — with all credentials secured in Azure Key Vault.
+
+### Pipeline Architecture
+
+```
+Producer (Kafka Studio / kubectl console)
+      │
+      ▼
+┌──────────────────────────────────────────────┐
+│ AKS cluster (3 nodes, Standard_D4s_v5)       │
+│                                              │
+│  Strimzi operator (KRaft mode)               │
+│  ├─ 3 controllers (metadata quorum)          │
+│  └─ 3 brokers (RF=3, min ISR=2)             │
+│                                              │
+│  Listeners:                                  │
+│  - internal 9092 (plain)                     │
+│  - internal 9093 (tls)                       │
+│  - external 9094 (LoadBalancer,              │
+│    TLS + SCRAM-SHA-512)                      │
+└──────────────────────────────────────────────┘
+      │  public LB IPs · TLS+SCRAM · internet
+      ▼
+┌──────────────────────────────────────────────┐
+│ Azure Databricks (classic workspace)         │
+│  - All-purpose cluster (Dedicated mode)      │
+│  - Structured Streaming readStream           │
+│  - Secrets pulled from Key Vault             │
+└──────────────────────────────────────────────┘
+      Azure Key Vault (fordatabrickskv1)
+      ├─ kafka-scram-password
+      └─ kafka-ca-cert
+```
+
+### Key Design Decisions
+
+| Decision | Reason |
+|---|---|
+| **Self-managed Kafka, not Event Hubs** | Event Hubs hides the broker/controller topology; self-managed gives real multi-broker KRaft control |
+| **KRaft mode (no ZooKeeper)** | ZooKeeper is deprecated/removed in current Strimzi; dedicated controller nodes hold cluster metadata |
+| **TLS + SCRAM-SHA-512, not mTLS** | Username/password over TLS is far easier to wire into Databricks than client-cert keystores |
+| **LoadBalancer listener, not NodePort** | Azure provisions stable public IPs; NodePort is fragile when nodes recycle |
+| **Key Vault-backed secret scope** | Keeps password + CA cert out of the notebook; pulled at runtime via `dbutils.secrets.get()` |
+| **Dedicated-mode Databricks cluster** | Standard (shared) mode restricts filesystem/Spark configs required for Kafka SSL setup |
+
+### Build Steps
+
+The pipeline was built in two phases — internal first, then external — to isolate failures:
+
+1. **Build AKS cluster** — resource group `rg-kafka-lab` (centralindia), Kubernetes 1.34.5, `--tier free`
+2. **Install Strimzi operator** — deploy CRDs into the `kafka` namespace
+3. **Deploy Kafka (Path X — internal only)** — Kafka 4.2.0, `metadataVersion 4.2-IV1`, RF=3, min ISR=2
+4. **Verify internally** — console producer + consumer as throwaway pods; cluster proven before any external exposure
+5. **Add external listener (Path Y)** — port 9094, type `loadbalancer`, TLS + SCRAM-SHA-512; rolling broker restart
+6. **Create the Kafka user** — `KafkaUser databricks-user` with `scram-sha-512` authentication
+7. **Extract secrets** — pull CA cert and SCRAM password from Kubernetes secrets
+8. **Store in Key Vault** — vault `fordatabrickskv1` (RBAC model), secrets `kafka-scram-password` and `kafka-ca-cert`
+9. **Grant Databricks read access** — Key Vault Secrets User role on the global `AzureDatabricks` app
+10. **Create secret scope** — scope `kafka-secrets` backed by the Key Vault URI
+11. **Verify secrets** — confirmed PEM round-tripped intact before connecting to Kafka
+12. **Run the stream** — `spark.readStream.format("kafka")` with SASL_SSL, streaming table populated
+
+### Databricks Structured Streaming Code
+
+```python
+KAFKA_BOOTSTRAP = "<bootstrap-LB-IP>:9094"
+KAFKA_USER = "databricks-user"
+KAFKA_PASSWORD = dbutils.secrets.get(scope="kafka-secrets", key="kafka-scram-password")
+CA_CERT = dbutils.secrets.get(scope="kafka-secrets", key="kafka-ca-cert")
+
+kafka_options = {
+    "kafka.bootstrap.servers": KAFKA_BOOTSTRAP,
+    "subscribe": "my-topic",
+    "kafka.security.protocol": "SASL_SSL",
+    "kafka.sasl.mechanism": "SCRAM-SHA-512",
+    "kafka.sasl.jaas.config": (
+        "kafkashaded.org.apache.kafka.common.security.scram.ScramLoginModule "
+        f'required username="{KAFKA_USER}" password="{KAFKA_PASSWORD}";'
+    ),
+    "kafka.ssl.truststore.type": "PEM",
+    "kafka.ssl.truststore.certificates": CA_CERT,
+    "startingOffsets": "earliest",
+    "failOnDataLoss": "false",
+}
+
+df = spark.readStream.format("kafka").options(**kafka_options).load()
+parsed = df.select(
+    col("key").cast("string"), col("value").cast("string"),
+    "topic", "partition", "offset", "timestamp",
+)
+display(parsed)
+```
+
+> **Critical:** The JAAS module must use the shaded class name `kafkashaded.org.apache.kafka.common.security.scram.ScramLoginModule` — the plain `org.apache.kafka…` name fails on Databricks.
+>
+> **SSL handshake failure:** If you connect via raw IP, add `"kafka.ssl.endpoint.identification.algorithm": ""` — Strimzi broker certs are issued to hostnames, not IPs.
+
+### Cost Management
+
+Three independent billing meters run on Azure:
+
+| Resource | Notes |
+|---|---|
+| **AKS worker VMs** | Stop with `az aks stop` (disk storage still billed) |
+| **LoadBalancer public IPs** | Billed even when AKS is stopped — only free after `az group delete` |
+| **Databricks DBUs** | Billed while cluster runs — enable auto-terminate |
+
+```bash
+az aks stop --resource-group rg-kafka-lab --name aks-kafka-lab  # stop VMs
+az group delete --name rg-kafka-lab                              # full teardown
+```
+
+### Next Steps
+
+- [ ] Persist stream to Unity Catalog — `writeStream` to a UC-managed Delta table (bronze layer) with a checkpoint
+- [ ] Build a medallion pipeline — Bronze → Silver → Gold transformations
+- [ ] Rebuild as a Lakeflow Declarative Pipeline (DLT) — compare against raw Structured Streaming
+- [ ] Enable cluster-level authorization — add a Kafka authorizer with scoped ACLs on the `KafkaUser`
 
 ---
 
