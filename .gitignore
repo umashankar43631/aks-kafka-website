@@ -1,0 +1,32 @@
+# Environments
+venv/
+env/
+.env
+.venv
+
+# Passwords, Secrets, and Keys
+*.key
+*.pem
+*.p8
+*.p12
+*.crt
+*.cert
+*.jks
+secret*
+passwd*
+password*
+*.p12
+*.rsa
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+*password*

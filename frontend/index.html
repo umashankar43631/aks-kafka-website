@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Test Studio</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-elements">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+    </div>
+
+    <div class="app-container">
+        <header class="glass-panel">
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <h1>Kafka Studio</h1>
+            </div>
+            <div class="status-indicator">
+                <span class="dot" id="status-dot"></span>
+                <span id="status-text">Checking Connection...</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="sidebar glass-panel">
+                <h2>Topics</h2>
+                <div class="action-bar">
+                    <button id="refresh-topics-btn" class="icon-btn" title="Refresh Topics">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                    </button>
+                    <button id="new-topic-btn" class="primary-btn btn-small">+ New Topic</button>
+                </div>
+                <ul id="topics-list" class="topics-list">
+                    <li class="loading-text">Loading...</li>
+                </ul>
+            </div>
+
+            <div class="content glass-panel">
+                <div class="header-section">
+                    <h2>Produce Message</h2>
+                    <span id="selected-topic-display" class="badge">No topic selected</span>
+                </div>
+                
+                <form id="produce-form">
+                    <div class="form-group">
+                        <label for="message-key">Message Key (Optional)</label>
+                        <input type="text" id="message-key" placeholder="e.g. user-123">
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="label-row">
+                            <label for="message-value">Message Payload (JSON)</label>
+                            <button type="button" id="mock-data-btn" class="text-btn">Generate Mock Data</button>
+                        </div>
+                        <textarea id="message-value" rows="10" placeholder='{"event": "test", "data": 123}'></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" id="send-msg-btn" class="primary-btn" disabled>
+                            Send to Kafka
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                        </button>
+                    </div>
+                </form>
+
+                <div id="notification-area" class="notification-area"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="new-topic-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <h3>Create New Topic</h3>
+            <form id="create-topic-form">
+                <div class="form-group">
+                    <label for="new-topic-name">Topic Name</label>
+                    <input type="text" id="new-topic-name" required placeholder="e.g. my-new-topic">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="partitions">Partitions</label>
+                        <input type="number" id="partitions" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="replication">Replication Factor</label>
+                        <input type="number" id="replication" value="1" min="1">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn" id="close-modal-btn">Cancel</button>
+                    <button type="submit" class="primary-btn">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+---
+# ─────────────────────────────────────────────────────────────
+# NODE POOL 1: Controllers (3 nodes)
+# These run the KRaft metadata quorum. They do NOT handle message
+# data — only cluster state/metadata. Lightweight.
+# ─────────────────────────────────────────────────────────────
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: controller
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster   # must match the Kafka resource name below
+spec:
+  replicas: 3
+  roles:
+    - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 10Gi
+        deleteClaim: false           # keep the disk if pod is deleted
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: "250m"
+    limits:
+      memory: 1.5Gi
+      cpu: "1"
+  jvmOptions:
+    -Xms: 768m
+    -Xmx: 768m
+---
+# ─────────────────────────────────────────────────────────────
+# NODE POOL 2: Brokers (3 nodes)
+# These handle the actual message streaming + storage (partitions).
+# Heavier — but we leave RAM for the OS page cache, which Kafka
+# relies on for read throughput, so heap is deliberately modest.
+# ─────────────────────────────────────────────────────────────
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  replicas: 3
+  roles:
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        deleteClaim: false
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: "500m"
+    limits:
+      memory: 4Gi
+      cpu: "2"
+  jvmOptions:
+    -Xms: 2g
+    -Xmx: 2g
+---
+# ─────────────────────────────────────────────────────────────
+# KAFKA CLUSTER
+# Ties the node pools together. Defines the listener (internal only
+# for now — Path X), replication settings, and enables KRaft.
+# ─────────────────────────────────────────────────────────────
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: my-cluster
+  namespace: kafka
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 4.2.0          # current Strimzi 1.0.x default (verified)
+    metadataVersion: 4.2-IV1
+    # Spread brokers across nodes/zones for real HA
+    rack:
+      topologyKey: topology.kubernetes.io/zone
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+    config:
+      # With 3 brokers we can afford RF=3 and require 2 in-sync.
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+  # Entity Operator manages KafkaTopic / KafkaUser resources for you
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

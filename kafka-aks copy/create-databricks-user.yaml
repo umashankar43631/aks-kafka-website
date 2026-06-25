@@ -1,0 +1,16 @@
+---
+# ─────────────────────────────────────────────────────────────
+# KAFKA USER — SCRAM-SHA-512 credentials for Databricks
+# Strimzi generates a Secret named "databricks-user" in the kafka
+# namespace containing the password. ACLs scope what this user can do.
+# ─────────────────────────────────────────────────────────────
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: databricks-user
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  authentication:
+    type: scram-sha-512
