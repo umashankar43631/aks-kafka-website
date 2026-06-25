@@ -20,18 +20,18 @@
 
 ## Table of Contents
 
-- [Overview](#-overview)
-- [Architecture](#-architecture)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
-- [Configuration](#-configuration)
-- [AKS Kafka Deployment](#-aks-kafka-deployment)
-- [Kafka → Databricks Streaming Pipeline](#-kafka--databricks-streaming-pipeline)
-- [API Reference](#-api-reference)
-- [Screenshots](#-screenshots)
-- [Contributing](#-contributing)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [AKS Kafka Deployment](#aks-kafka-deployment)
+- [Kafka → Databricks Streaming Pipeline](#kafka--databricks-streaming-pipeline)
+- [API Reference](#api-reference)
+- [Screenshots](#screenshots)
+- [Contributing](#contributing)
 
 ---
 
